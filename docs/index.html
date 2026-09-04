@@ -4,54 +4,99 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>雙北房價 · 趨勢 + 行情水準</title>
-<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script>window.__ECHARTS_OK=false;</script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" onload="window.__ECHARTS_OK=true"></script>
 <style>
   :root{
-    --bg:#f6f7f9; --card:#fff; --ink:#1c2330; --mut:#6b7482;
-    --line:#dfe3ea; --acc:#2563eb; --chip:#eef1f6;
-    --up:#dc2626; --down:#16a34a;
+    --paper:#f6f3ec; --card:#fffdf8; --card2:#faf7f0;
+    --ink:#3a3833; --mut:#8c887d; --hair:#e3ded2; --hair2:#d3cdbf;
+    --acc:#b3402f;            /* 茜色 */
+    --acc-soft:#e8d9d2;
+    --sel:#3f4a4f;            /* 藍鼠 */
+    --shadow:0 1px 2px rgba(60,55,40,.05),0 6px 24px -12px rgba(60,55,40,.12);
+    --up:#a33a2c; --down:#4a6b4f;
   }
   *{box-sizing:border-box}
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Microsoft JhengHei",sans-serif;
-       background:var(--bg);color:var(--ink)}
-  header{padding:14px 16px 10px;border-bottom:1px solid var(--line);background:var(--card);
-         position:sticky;top:0;z-index:5}
-  header h1{margin:0;font-size:18px}
-  header .sub{font-size:12px;color:var(--mut);margin-top:3px}
-  main{max-width:1120px;margin:0 auto;padding:14px 16px 40px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
-        padding:14px;margin-top:12px}
-  .card h2{font-size:15px;margin:0 0 8px;color:var(--ink)}
-  .note{font-size:11px;color:var(--mut);margin:6px 0 0}
-  .controls{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:flex-end}
-  .ctl{display:flex;flex-direction:column;gap:4px}
-  .ctl label{font-size:12px;color:var(--mut)}
-  select,input[type=number]{font-size:14px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;
-         background:#fff;color:var(--ink)}
-  .chips{display:flex;flex-wrap:wrap;gap:6px;max-width:680px}
-  .chip{font-size:13px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);
-        background:#fff;color:var(--ink);cursor:pointer;user-select:none}
-  .chip.on{background:var(--acc);border-color:var(--acc);color:#fff}
-  .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;flex-wrap:wrap}
-  .seg button{border:0;background:#fff;font-size:13px;padding:6px 12px;cursor:pointer;color:var(--mut)}
-  .seg button.on{background:var(--acc);color:#fff}
-  .err{color:#b91c1c;font-size:13px;margin-top:8px;display:none}
-  table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
-  th,td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:"Hiragino Sans","Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+       background:var(--paper);color:var(--ink);letter-spacing:.01em;
+       -webkit-font-smoothing:antialiased}
+  /* ── 載入頂條 ── */
+  #topbar{position:fixed;top:0;left:0;height:2px;width:100%;z-index:99;background:transparent;overflow:hidden;pointer-events:none;opacity:0;transition:opacity .4s}
+  #topbar.on{opacity:1}
+  #topbar::after{content:"";display:block;height:100%;width:38%;background:linear-gradient(90deg,transparent,var(--acc),transparent);
+    animation:slide 1.1s ease-in-out infinite}
+  @keyframes slide{0%{transform:translateX(-110%)}100%{transform:translateX(320%)}}
+  /* ── header ── */
+  header{padding:26px 20px 18px;border-bottom:1px solid var(--hair);background:var(--paper)}
+  header h1{margin:0;font-size:17px;font-weight:600;letter-spacing:.06em}
+  header h1 .jp{color:var(--acc);font-weight:400;margin-right:2px}
+  header .sub{font-size:11.5px;color:var(--mut);margin-top:6px;letter-spacing:.04em}
+  main{max-width:1100px;margin:0 auto;padding:26px 18px 90px}
+  .card{background:var(--card);border:1px solid var(--hair);border-radius:14px;
+        padding:22px 22px 18px;margin-top:20px;box-shadow:var(--shadow);
+        opacity:0;transform:translateY(10px)}
+  .card.reveal{animation:fadeUp .65s cubic-bezier(.2,.7,.3,1) forwards}
+  @keyframes fadeUp{to{opacity:1;transform:none}}
+  .card h2{font-size:13.5px;margin:0 0 14px;font-weight:600;letter-spacing:.08em;color:var(--ink);
+    display:flex;align-items:baseline;gap:8px}
+  .card h2::before{content:"";width:7px;height:7px;background:var(--acc);border-radius:1px;align-self:center;
+    flex:none;transform:rotate(45deg)}
+  .card h2 small{font-weight:400;color:var(--mut);font-size:11px;letter-spacing:.03em}
+  /* ── 控制 ── */
+  .controls{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:flex-end}
+  .ctl{display:flex;flex-direction:column;gap:5px}
+  .ctl label{font-size:10.5px;color:var(--mut);letter-spacing:.12em}
+  select,input[type=number]{font-size:13.5px;padding:7px 10px;border:1px solid var(--hair2);border-radius:8px;
+         background:#fff;color:var(--ink);outline:none;transition:border-color .25s,box-shadow .25s}
+  select:focus,input[type=number]:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(179,64,47,.10)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;max-width:700px}
+  .chip{font-size:12px;padding:5px 12px;border-radius:999px;border:1px solid var(--hair2);
+        background:transparent;color:var(--ink);cursor:pointer;user-select:none;
+        transition:all .25s cubic-bezier(.2,.7,.3,1)}
+  .chip:hover{border-color:var(--acc);color:var(--acc);transform:translateY(-1px)}
+  .chip.on{background:var(--ink);border-color:var(--ink);color:#faf7f0}
+  .chip.on:hover{color:#faf7f0}
+  .seg{display:inline-flex;border:1px solid var(--hair2);border-radius:9px;overflow:hidden;flex-wrap:wrap;
+       background:#fff}
+  .seg button{border:0;background:transparent;font-size:12px;padding:7px 13px;cursor:pointer;color:var(--mut);
+    transition:all .22s;letter-spacing:.04em}
+  .seg button:hover{color:var(--acc)}
+  .seg button.on{background:var(--ink);color:#faf7f0}
+  .seg button.on:hover{color:#faf7f0}
+  .err{color:#a33a2c;font-size:12.5px;margin-top:10px;display:none;background:var(--acc-soft);
+       padding:8px 12px;border-radius:8px;letter-spacing:.02em}
+  /* ── 圖 ── */
+  #chart{width:100%;height:420px;margin-top:6px;transition:opacity .5s}
+  #noline{display:none;text-align:center;color:var(--mut);padding:44px 12px;font-size:13.5px;line-height:1.9}
+  /* ── 表 ── */
+  #wrapTbl{overflow:auto;max-height:52vh;border:1px solid var(--hair);border-radius:10px}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{padding:9px 14px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--hair)}
   th:first-child,td:first-child{text-align:left}
-  th{color:var(--mut);font-weight:600;font-size:12px}
-  td.n,th.n{color:var(--mut)}
-  .bar{display:inline-block;height:9px;border-radius:3px;vertical-align:middle;margin-right:6px}
+  tbody tr{transition:background .18s}
+  tbody tr:hover{background:var(--card2)}
+  th{color:var(--mut);font-weight:500;font-size:10.5px;letter-spacing:.1em;
+     background:#fcfaf4;position:sticky;top:0}
+  td.n,th.n{color:var(--mut);font-size:12px}
+  .bar{display:inline-block;height:8px;border-radius:2px;vertical-align:middle;margin-right:7px;transition:width .5s ease}
   .num{font-variant-numeric:tabular-nums}
   .pos{color:var(--up)} .neg{color:var(--down)}
-  #wrapTbl,#wrapTbl2{overflow:auto;max-height:52vh}
-  .hint{font-size:12px;color:var(--mut);margin-top:6px;line-height:1.6}
-  #chart{width:100%;height:430px}
-  #noline{display:none;text-align:center;color:var(--mut);padding:40px 10px;font-size:14px}
-  @media (max-width:680px){ #chart{height:340px} table{font-size:12px} th,td{padding:4px 6px} }
+  .note{font-size:11px;color:var(--mut);margin:12px 0 0;line-height:1.85;letter-spacing:.02em}
+  .hint{font-size:11.5px;color:var(--mut);margin-top:4px;letter-spacing:.02em}
+  /* ── 載入狀態 ── */
+  .loading{color:var(--mut);font-size:13px;padding:30px 0;text-align:center;letter-spacing:.15em}
+  @media (max-width:680px){
+    #chart{height:340px}
+    table{font-size:12px} th,td{padding:6px 8px}
+    header{padding:18px 14px 14px}
+    .card{padding:16px}
+  }
 </style>
+
 </head>
 <body>
+<div id="topbar"></div>
 <header>
   <h1>🏠 雙北房價 <span style="font-size:12px;color:var(--mut);font-weight:400">· 長期走勢（刊登 vs 成交）＋ 行情水準（細維度）</span></h1>
   <div class="sub" id="metaSub">載入中…</div>
@@ -147,11 +192,25 @@ const SIZE_LABEL={'<25':'<25 坪','25-35':'25–35 坪','35-50':'35–50 坪','5
 const TYPE_LABEL={0:'未分類',1:'公寓',2:'華廈',3:'大樓',4:'電梯大樓',5:'透天'};
 const TYPE_ORDER=[1,2,3,4,5,0];
 const SRC_LABEL={asking:'刊登價',lvr:'成交價'};
-const PALETTE=['#2563eb','#dc2626','#16a34a','#d97706','#7c3aed','#0891b2'];
+const PALETTE=['#b3402f','#3f6a74','#6b7f45','#c08a3e','#7c5f8f','#a26448'];
 const state={region:null,maps:{},pools:{},districts:[],types:[1,2,3,4,5],sizes:[],rooms:[],
              src:'both',metric:'unit',band:true,presetDays:0,onlyActive:true,win:12,
              trendSize:'25-35',trendRooms:3};
-const chart=echarts.init($('chart'));
+let chart=null;
+function showErr(m){const b=$('errBox');b.textContent=m;b.style.display=m?'block':'none';console.error(m);}
+
+async function ensureEcharts(){
+  if(window.echarts)return true;
+  for(const u of ['https://unpkg.com/echarts@5/dist/echarts.min.js',
+                  'https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.1/echarts.min.js']){
+    try{
+      await new Promise((res,rej)=>{const s=document.createElement('script');
+        s.src=u;s.onload=res;s.onerror=rej;document.head.appendChild(s);});
+      if(window.echarts)return true;
+    }catch(e){}
+  }
+  return false;
+}
 
 async function loadJSON(u){const r=await fetch(u);if(!r.ok)throw new Error(u+' '+r.status);return r.json();}
 async function loadPool(file){
@@ -189,6 +248,7 @@ function allSeries(){
 
 // ───────── 長期走勢 chart ─────────
 function applyZoom(){
+  if(!chart)return;
   const pts=allSeries().flatMap(x=>x.pts.map(p=>p[0]));
   if(!pts.length)return;
   let [lo,hi]=[Math.min(...pts),Math.max(...pts)];
@@ -196,7 +256,7 @@ function applyZoom(){
   chart.dispatchAction({type:'dataZoom',startValue:lo,endValue:hi});
 }
 function redrawTrend(){
-  if(!state.districts.length)return;
+  if(!state.districts.length||!chart)return;
   const series=allSeries();
   const fmtTs=ts=>{const d=new Date(ts+8*3600000);return d.toISOString().slice(0,16).replace('T',' ');};
   if(!series.length){
@@ -228,9 +288,12 @@ function redrawTrend(){
     }
   });
   const yName=metric==='unit'?'中位單價（萬/坪）':'中位總價（萬）';
+  const allTs=series.flatMap(x=>x.pts.map(p=>p[0]));
+  const xLo=Math.min(...allTs),xHi=Math.max(...allTs);
   chart.setOption({
-    animation:false,
-    tooltip:{trigger:'axis',confine:true,formatter(ps){
+    animation:true,animationDuration:700,animationEasing:'cubicOut',animationDurationUpdate:350,
+    tooltip:{trigger:'axis',confine:true,backgroundColor:'rgba(255,253,248,.96)',
+      borderColor:'#e3ded2',textStyle:{color:'#3a3833',fontSize:12},formatter(ps){
         if(!ps.length)return'';const ts=ps[0].value[0];
         let html=fmtTs(ts);
         for(const {d,s} of series){
@@ -243,7 +306,7 @@ function redrawTrend(){
         return html;}},
     legend:{top:0,type:'scroll'},
     grid:{left:14,right:14,top:34,bottom:66,containLabel:true},
-    xAxis:{type:'time',axisLabel:{formatter:v=>{const d=new Date(v+8*3600000);return `${d.getUTCMonth()+1}/${d.getUTCDate()}`;}}},
+    xAxis:{type:'time',min:xLo,max:xHi,axisLabel:{formatter:v=>{const d=new Date(v+8*3600000);return `${d.getUTCMonth()+1}/${d.getUTCDate()}`;}}},
     yAxis:{type:'value',name:yName,nameTextStyle:{color:'#6b7482'},scale:true,
            splitLine:{lineStyle:{color:'#eef0f4'}}},
     dataZoom:[{type:'inside'},{type:'slider',height:20,bottom:6,
@@ -395,6 +458,10 @@ function chipGroup(el,values,labelFn,current,onToggle){
   });
 }
 async function init(){
+  const tb0=$('topbar');if(tb0)tb0.classList.add('on');
+  document.querySelectorAll('.card').forEach((el,i)=>{el.style.animationDelay=(i*110)+'ms';el.classList.add('reveal');});
+  if(!(await ensureEcharts())){showErr('圖表函式庫(echarts)載入失敗——請檢查網路後重新整理；若持續發生請告訴我（會再換 CDN）。');return;}
+  chart=echarts.init($('chart'));
   META=await loadJSON('data/meta.json');
   const reg=$('region');
   META.trend.regions.forEach(r=>{const o=document.createElement('option');o.value=r.id;o.textContent=r.name;reg.appendChild(o);});
@@ -434,10 +501,14 @@ async function init(){
     state.rooms=cur.includes(v)?cur.filter(x=>x!==v):[...cur,v].sort();
     document.querySelectorAll('#roomChips .chip').forEach(x=>x.classList.toggle('on',state.rooms.includes(+x.dataset.v)));
     rebuildTable();});
-  window.addEventListener('resize',()=>chart.resize());
-  setRegion('taipei');
+  window.addEventListener('resize',()=>{if(chart)chart.resize();});
+  window.addEventListener('error',e=>showErr('執行錯誤: '+e.message));
+  window.addEventListener('unhandledrejection',e=>showErr('資料載入失敗: '+(e.reason&&e.reason.message||e.reason)));
+  try{await setRegion('taipei');}
+  catch(e){showErr('資料載入失敗: '+e.message);}
+  const tb2=$('topbar');if(tb2)tb2.classList.remove('on');
 }
-init().catch(e=>{const b=$('errBox');b.textContent='初始化失敗: '+e.message;b.style.display='block';});
+init().catch(e=>showErr('初始化失敗: '+e.message));
 </script>
 </body>
 </html>
