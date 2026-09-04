@@ -67,7 +67,9 @@ SELECT source,
        CAST(price_wan AS float8) AS price_wan,
        CAST(unit_wan_per_ping AS float8) AS unit_wan,
        EXTRACT(EPOCH FROM last_seen_at)::bigint / 86400 AS last_d,
-       CASE WHEN is_active THEN 1 ELSE 0 END AS act
+       CASE WHEN is_active THEN 1 ELSE 0 END AS act,
+       COALESCE(EXTRACT(EPOCH FROM first_seen_at)::bigint / 86400,
+                EXTRACT(EPOCH FROM last_seen_at)::bigint / 86400) AS first_d
 FROM listings
 WHERE region = %s
   AND (is_active OR last_seen_at >= now() - interval '13 months')
@@ -87,7 +89,8 @@ SELECT district, building_type_norm, has_elevator,
        CAST(unit_wan_per_ping AS float8) AS unit_wan,
        EXTRACT(EPOCH FROM tx_date)::bigint / 86400 AS last_d,
        CASE WHEN parking_kind IS NOT NULL OR parking_total_wan IS NOT NULL
-            THEN 1 ELSE 0 END AS has_park
+            THEN 1 ELSE 0 END AS has_park,
+       EXTRACT(EPOCH FROM tx_date)::bigint / 86400 AS first_d
 FROM lvr_tx
 WHERE region = %s
   AND tx_date BETWEEN now() - interval '13 months' AND CURRENT_DATE
@@ -115,7 +118,7 @@ def _asking_row(r):
             f"{'' if r['rooms'] is None else int(r['rooms'])},"
             f"{'' if r['nearest_mrt_dist_m'] is None else int(r['nearest_mrt_dist_m'])},"
             f"{fnum(r['price_wan'],0)},{fnum(r['unit_wan'],1)},"
-            f"{int(r['last_d'])},{r['act']}\n")
+            f"{int(r['last_d'])},{r['act']},{int(r['first_d'])}\n")
 
 
 def _lvr_row(r):
@@ -125,7 +128,7 @@ def _lvr_row(r):
             f"{fnum(r['main_acc'],1)},{fnum(r['size_ping'],1)},"
             f"{'' if r['rooms'] is None else int(r['rooms'])},"
             f",{fnum(r['price_wan'],0)},{fnum(r['unit_wan'],1)},"
-            f"{int(r['last_d'])},0\n")
+            f"{int(r['last_d'])},0,{int(r['first_d'])}\n")
 
 
 def main() -> int:
@@ -193,8 +196,8 @@ def main() -> int:
             "regions": trend_regions,
         },
         "fine": {
-            "source": "asking pool=近13個月刊登(現況 metadata)；lvr pool=近13個月成交(交易 metadata)。"
-                      "欄位: src,district,type,elev,park,roof,age,m_acc,size,rooms,mrt,price,unit,last_d,act；"
+            "source": "asking pool=近13個月刊登(現況 metadata，first_d=首見日)；lvr pool=近13個月成交(交易 metadata)。"
+                      "欄位: src,district,type,elev,park,roof,age,m_acc,size,rooms,mrt,price,unit,last_d,act,first_d；"
                       "type/elev/park/roof=-1 或空=未知；src 4=成交",
             "src_names": ["591", "sinyi", "yungching", "hbhousing", "lvr成交"],
             "type_names": ["未分類/unknown", "公寓", "華廈", "大樓(11-19F)",
