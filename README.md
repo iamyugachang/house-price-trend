@@ -5,7 +5,7 @@
 - 資料源：tw-house-daily 每日 08:00/20:00 `market_grid` 快照
   - asking = 平台刊登價（即時）
   - lvr = 內政部實價登錄成交（每季公布，揭露滯後 ~2 個月；`lvr_tx` 由 `tw-house lvr update` 匯入）
-- 網站：`docs/index.html`（趨勢，刊登 vs 成交 雙線）+ `docs/stats.html`（行情水準：屋齡/類型/電梯/車位/主+陽/捷運 過濾、刊登/成交並排比較）+ `docs/data/*.json|csv.gz`（由 `scripts/export_trend_data.py` 產出）
+- 網站：`docs/index.html` 單頁 = 長期走勢圖（刊登 vs 成交）+ 行情水準表（屋齡/類型/電梯/車位/主+陽/捷運 細維度過濾、刊登/成交並排）＋ `docs/data/*.json|csv.gz`（由 `scripts/export_trend_data.py` 產出）
 - 更新：跑 export 後 commit push 即可；GH Pages 從 main 分支 `/docs` 自動發布
 
 ```bash
