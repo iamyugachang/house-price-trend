@@ -281,9 +281,9 @@ function redrawTrend(){
       lineStyle:{width:isLvr?2.2:2.6,color,type:isLvr?'dashed':'solid'},itemStyle:{color},data:dat});
     if(band&&metric==='unit'){
       const sb='b'+i+(isLvr?'L':'A');
-      bands.push({name:name+' band',stack:sb,symbol:'none',silent:true,lineStyle:{opacity:0},itemStyle:{opacity:0},
+      bands.push({name:name+' band',type:'line',stack:sb,symbol:'none',silent:true,lineStyle:{opacity:0},itemStyle:{opacity:0},
         data:pts.filter(p=>p[4]!=null).map(p=>[p[0],+p[4].toFixed(2)])});
-      bands.push({name:name+' band',stack:sb,symbol:'none',silent:true,lineStyle:{opacity:0},
+      bands.push({name:name+' band',type:'line',stack:sb,symbol:'none',silent:true,lineStyle:{opacity:0},
         areaStyle:{color,opacity:.08},data:pts.filter(p=>p[5]!=null).map(p=>[p[0],+p[5].toFixed(2)])});
     }
   });
