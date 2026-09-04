@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>雙北房價 · 趨勢 + 行情水準</title>
+<link rel="icon" href="data:,">
 <script>window.__ECHARTS_OK=false;</script>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" onload="window.__ECHARTS_OK=true"></script>
 <style>
@@ -213,6 +214,7 @@ async function ensureEcharts(){
 }
 
 async function loadJSON(u){const r=await fetch(u);if(!r.ok)throw new Error(u+' '+r.status);return r.json();}
+function maxOf(arr){let m=-Infinity;for(let i=0;i<arr.length;i++){if(arr[i]>m)m=arr[i];}return m;}
 async function loadPool(file){
   const r=await fetch('data/'+file);
   if(!window.DecompressionStream)throw new Error('瀏覽器不支援 gzip 解壓，請更新 Chrome/Safari/Firefox');
@@ -424,7 +426,7 @@ async function setRegion(id){
     loadPool(rg.asking.file),loadPool(rg.lvr.file)]);
   state.maps.asking=new Map(mapA);state.maps.lvr=new Map(mapL);
   poolA.src='asking';poolL.src='lvr';
-  poolA.maxD=Math.max(...poolA.lastD);poolL.maxD=Math.max(...poolL.lastD);
+  poolA.maxD=maxOf(poolA.lastD);poolL.maxD=maxOf(poolL.lastD);
   state.pools={asking:poolA,lvr:poolL};
   const order=[...new Set(poolA.dist.filter((d,i)=>poolA.lastD[i]>poolA.maxD-365))].sort();
   if(!state.districts.length||!state.districts.every(d=>order.includes(d)))
