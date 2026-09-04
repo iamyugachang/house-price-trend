@@ -38,6 +38,20 @@ const { chromium } = pw;
   await page.selectOption('#age', '5-10');
   await page.waitForTimeout(1000);
   checks.push(['newtaipei+age', await snap()]);
+  // rolling view: 每日快照 刊登 vs 成交 全程重疊
+  await page.click('#viewSeg button[data-v="rolling"]');
+  await page.waitForTimeout(7000);
+  const rs = await page.evaluate(() => {
+    const g = document.getElementById.bind(document);
+    const inst = echarts.getInstanceByDom(g('chart'));
+    const names = inst ? (inst.getOption().series || []).filter(s => !s.name.endsWith(' band')).map(s => s.name) : [];
+    return { err: g('errBox').textContent, canvases: g('chart').querySelectorAll('canvas').length,
+             hint: g('dataHint').textContent, names };
+  });
+  const rollOk = !rs.err && rs.canvases === 1 && rs.names.length >= 2 &&
+                 rs.names.some(n => n.includes('刊登')) && rs.names.some(n => n.includes('成交')) && !errs.length;
+  console.log(`${rollOk ? 'PASS' : 'FAIL'} rolling: err="${rs.err}" canvases=${rs.canvases} series=${JSON.stringify(rs.names)} | ${rs.hint}`);
+  if (!rollOk) process.exit(1);
   await browser.close();
 
   let fail = false;
