@@ -3,13 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>雙北房價趨勢 · 刊登行情</title>
+<title>雙北房價趨勢 · 刊登 vs 成交</title>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <style>
   :root{
     --bg:#f6f7f9; --card:#fff; --ink:#1c2330; --mut:#6b7482;
     --line:#dfe3ea; --acc:#2563eb; --chip:#eef1f6;
-    --ok:#16a34a; --warn:#d97706;
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Microsoft JhengHei",sans-serif;
@@ -31,20 +30,20 @@
         background:#fff;color:var(--ink);cursor:pointer;user-select:none}
   .chip.on{background:var(--acc);border-color:var(--acc);color:#fff}
   .chip:disabled{opacity:.4;cursor:not-allowed}
-  .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;flex-wrap:wrap}
   .seg button{border:0;background:#fff;font-size:13px;padding:6px 12px;cursor:pointer;color:var(--mut)}
   .seg button.on{background:var(--acc);color:#fff}
   .row2{display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-top:10px}
   .hint{font-size:12px;color:var(--mut);margin-top:8px}
-  #chart{width:100%;height:480px}
+  #chart{width:100%;height:500px}
   #noline{display:none;text-align:center;color:var(--mut);padding:60px 10px;font-size:14px}
   .err{color:#b91c1c;font-size:13px;margin-top:6px;display:none}
-  @media (max-width:680px){ #chart{height:380px} .chips{max-width:100%} }
+  @media (max-width:680px){ #chart{height:400px} .chips{max-width:100%} }
 </style>
 </head>
 <body>
 <header>
-  <h1>🏠 雙北房價趨勢 <span style="font-size:12px;color:var(--mut);font-weight:400">· 平台刊登行情（asking）</span></h1>
+  <h1>🏠 雙北房價趨勢 <span style="font-size:12px;color:var(--mut);font-weight:400">· 刊登價 vs 實價登錄成交</span></h1>
   <div class="sub" id="metaSub">載入中…</div>
 </header>
 <main>
@@ -56,11 +55,17 @@
         <div class="chips" id="districtChips"></div></div>
     </div>
     <div class="controls" style="margin-top:12px">
+      <div class="ctl"><label>資料源</label>
+        <div class="seg" id="srcSeg">
+          <button data-src="asking">刊登價</button>
+          <button data-src="lvr">成交價</button>
+          <button data-src="both" class="on">刊登 vs 成交</button>
+        </div></div>
       <div class="ctl"><label>坪數</label>
         <select id="size"></select></div>
       <div class="ctl"><label>房數</label>
         <select id="rooms"></select></div>
-      <div class="ctl"><label>統計期間（含近 N 個月刊登）</label>
+      <div class="ctl"><label>統計期間</label>
         <select id="win"></select></div>
       <div class="ctl"><label>指標</label>
         <div class="seg" id="metricSeg">
@@ -85,36 +90,40 @@
     <div class="err" id="errBox"></div>
   </div>
   <div class="card"><div id="chart"></div>
-    <div id="noline">此組合沒有足夠資料（n≥5）。<br>試試放寬統計期間、坪數或房數，或換行政區。</div>
+    <div id="noline"></div>
   </div>
   <p style="font-size:11px;color:var(--mut);line-height:1.7">
-    資料：tw-house 每日 08:00/20:00 行情快照（2026-05-26 起）。圖中數值為「該行政區 × 坪數 × 房數」在指定期間內
-    刊登物件的<span style="color:var(--ink)">中位數</span>，點值為 n=樣本數。⚠️ 目前只有平台刊登價（asking）；
-    實價登錄成交(lvr)側自 2026-05 起無資料，未納入。樣本 n&lt;5 的組合已剔除，可能造成部分極短線跳動或缺口。
+    資料：tw-house 每日 08:00/20:00 行情快照（2026-05-26 起）。刊登價 = 平台上架物件中位（asking，
+    即時）；成交價 = 內政部實價登錄建物交易中位（lvr，每季公布，<b>揭露至 2026-06</b>，故「近 1/3 個月」
+    成交窗通常沒有資料，屬正常滯後）。兩者中位數均含車位原定義、樣本 n≥5；樣本不足的時點斷線不補。
   </p>
 </main>
 <script>
 const $=id=>document.getElementById(id);
 const SIZE_LABEL={'<25':'<25 坪','25-35':'25–35 坪','35-50':'35–50 坪','50+':'50+ 坪'};
 const ROOM_LABEL=n=>`${n}房`;
+const SRC_LABEL={asking:'刊登價',lvr:'成交價'};
 const PALETTE=['#2563eb','#dc2626','#16a34a','#d97706','#7c3aed','#0891b2'];
-const state={region:null,data:null,districts:[],size:null,rooms:null,win:null,
-             metric:'unit',band:true,presetDays:0};
+const state={region:null,maps:{},districts:[],src:'both',metric:'unit',band:true,presetDays:0};
 const chart=echarts.init($('chart'));
 
 async function loadJSON(u){const r=await fetch(u);if(!r.ok)throw new Error(u+' '+r.status);return r.json();}
+function keyFor(d){const {size,rooms,win}=selVals();return `${d}|${size}|${rooms}|${win}`;}
+function seriesFor(d,src){return (state.maps[src]||new Map()).get(keyFor(d))||null;}
+function selVals(){return {size:$('size').value,rooms:+$('rooms').value,win:+$('win').value};}
 
 let META=null;
 async function init(){
   META=await loadJSON('data/meta.json');
-  const sub=`資料 ${META.generated_at.slice(0,10)} · ${META.run_count} 次快照 · ${META.first_run_at.slice(0,10)} → ${META.last_run_at.slice(0,10)}`;
+  const rg=META.trend.regions[0];
+  const sub=`資料 ${META.generated_at.slice(0,10)} · ${rg.files.lvr?'成交揭露至 2026-06':''} · 快照自 2026-05-26`;
   $('metaSub').textContent=sub;
   const reg=$('region');
-  META.regions.forEach(rg=>{const o=document.createElement('option');o.value=rg.id;o.textContent=rg.name;reg.appendChild(o);});
+  META.trend.regions.forEach(r=>{const o=document.createElement('option');o.value=r.id;o.textContent=r.name;reg.appendChild(o);});
   reg.addEventListener('change',()=>setRegion(reg.value));
   const win=$('win');
-  META.windows_months.forEach(w=>{const o=document.createElement('option');o.value=w;o.textContent=`近 ${w} 個月`;win.appendChild(o);});
-  win.value='3';
+  [12,6,3,1].forEach(w=>{const o=document.createElement('option');o.value=w;o.textContent=`近 ${w} 個月`;win.appendChild(o);});
+  win.value='12';
   const sz=$('size');
   Object.entries(SIZE_LABEL).forEach(([k,l])=>{const o=document.createElement('option');o.value=k;o.textContent=l;sz.appendChild(o);});
   sz.value='25-35';
@@ -122,6 +131,8 @@ async function init(){
   [3,4,2,5,1].forEach(n=>{const o=document.createElement('option');o.value=n;o.textContent=ROOM_LABEL(n);rm.appendChild(o);});
   rm.value='3';
   ['region','size','rooms','win'].forEach(id=>$(id).addEventListener('change',redraw));
+  $('srcSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+    state.src=b.dataset.src;document.querySelectorAll('#srcSeg button').forEach(x=>x.classList.toggle('on',x===b));redraw();});
   $('metricSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
     state.metric=b.dataset.m;document.querySelectorAll('#metricSeg button').forEach(x=>x.classList.toggle('on',x===b));redraw();});
   $('bandSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
@@ -133,14 +144,29 @@ async function init(){
   setRegion('taipei');
 }
 
+function srcsActive(){
+  return state.src==='both'?['asking','lvr']:[state.src];
+}
+
 async function setRegion(id){
-  const rg=META.regions.find(r=>r.id===id);
-  state.region=rg;state.districts=[];
+  const rg=META.trend.regions.find(r=>r.id===id);
+  state.region=rg;
   const chips=$('districtChips');chips.innerHTML='';
-  const order=rg.districts.map(d=>d.name);
-  // default selections: 內湖區 if present else first three
+  const files=rg.files;
+  state.maps={};
+  for(const s of ['asking','lvr']){
+    if(!files[s])continue;
+    const d=await loadJSON('data/'+files[s]);
+    state.maps[s]=new Map(d);
+  }
+  const haveLvr=!!state.maps.lvr;
+  // 沒成交資料的區（應不會發生）自動退回 asking
+  if(!state.maps.asking&&state.maps.lvr){state.src='lvr';syncSrcSeg();}
+  if(state.src==='lvr'&&!haveLvr){state.src='asking';syncSrcSeg();}
+  const withData=[...new Set([...(state.maps.asking?state.maps.asking.keys():[]),...(state.maps.lvr?state.maps.lvr.keys():[])])];
+  const order=[...new Set(withData.map(k=>k.split('|')[0]))];
   const defs=['內湖區','板橋區','中和區'].filter(d=>order.includes(d)).slice(0,order.includes('內湖區')?1:3);
-  if(!defs.length)defs.push(order[0]);
+  if(!defs.length&&order.length)defs.push(order[0]);
   order.forEach(name=>{
     const c=document.createElement('span');
     c.className='chip'+(defs.includes(name)?' on':'');
@@ -154,94 +180,108 @@ async function setRegion(id){
     chips.appendChild(c);
   });
   state.districts=defs;
-  try{state.data=await loadJSON('data/'+rg.file);}catch(err){showErr('資料載入失敗: '+err.message);return;}
   redraw();
 }
 
-function selVals(){
-  return {size:$('size').value, rooms:+$('rooms').value, win:+$('win').value};
-}
-function seriesFor(district){
-  const {size,rooms,win}=selVals();
-  const key=`${district}|${size}|${rooms}|${win}`;
-  return (state.data&&state.data.find(([k])=>k===key))||null;
+function syncSrcSeg(){
+  document.querySelectorAll('#srcSeg button').forEach(x=>x.classList.toggle('on',x.dataset.src===state.src));
 }
 
 function showErr(m){const e=$('errBox');e.textContent=m;e.style.display=m?'block':'none';}
 
 function applyZoom(){
-  const {data,districts,size,rooms,win}=state;
-  const first=seriesFor(districts[0]);
-  const all=[first,...districts.slice(1).map(seriesFor)].filter(Boolean);
-  const ts=all.flatMap(([,pts])=>pts.map(p=>p[0]));
-  if(!ts.length)return;
-  let [lo,hi]=[Math.min(...ts),Math.max(...ts)];
+  const series=allSeries();
+  const pts=series.flatMap(s=>s.pts.map(p=>p[0]));
+  if(!pts.length)return;
+  let [lo,hi]=[Math.min(...pts),Math.max(...pts)];
   if(state.presetDays>0)lo=hi-state.presetDays*86400000;
   chart.dispatchAction({type:'dataZoom',startValue:lo,endValue:hi});
 }
 
+function allSeries(){
+  const out=[];
+  for(const d of state.districts){
+    for(const s of srcsActive()){
+      const ser=seriesFor(d,s);
+      if(ser)out.push({d,s,pts:ser});
+    }
+  }
+  return out;
+}
+
 function redraw(){
   const {districts,metric,band}=state;
-  const {size,rooms,win}=selVals();
-  if(!districts.length||!state.data){return;}
+  if(!districts.length)return;
   showErr('');
-  const series=districts.map(seriesFor).filter(Boolean);
+  const series=allSeries();
+  const fmtTs=ts=>{const dt=new Date(ts+8*3600000);return dt.toISOString().slice(0,16).replace('T',' ');};
   if(!series.length){
-    $('chart').style.display='none';$('noline').style.display='block';
+    $('chart').style.display='none';
+    const hasLvr=srcsActive().includes('lvr');
+    const {win}=selVals();
+    $('noline').style.display='block';
+    $('noline').innerHTML=hasLvr&&win<6
+      ?'成交價每季揭露、目前最新到 2026-06，所以「近 1/3 個月」成交窗沒有資料。<br>請改用<b>近 6 或 12 個月</b>，或切到「刊登價」比較即時行情。'
+      :'此組合沒有足夠資料（樣本 n≥5）。<br>試試放寬統計期間、坪數、房數、資料源，或換行政區。';
     return;
   }
   $('chart').style.display='block';$('noline').style.display='none';
-  const fmtTs=ts=>{const d=new Date(ts+8*3600000); // Asia/Taipei
-    return d.toISOString().slice(0,16).replace('T',' ');};
+  const mIdx=metric==='unit'?3:2;
   const lines=[],bands=[];
-  districts.forEach((d,i)=>{
-    const s=seriesFor(d);
-    if(!s)return;
-    const pts=s[1].filter(p=>p[metric==='unit'?3:2]!=null);
-    const mIdx=metric==='unit'?3:2;
-    lines.push({name:d,type:'line',smooth:false,showSymbol:false,
-      connectNulls:false,lineStyle:{width:2.5,color:PALETTE[i%PALETTE.length]},
-      itemStyle:{color:PALETTE[i%PALETTE.length]},
-      data:pts.map(p=>[p[0],+p[mIdx].toFixed(2)])});
+  const combo=(i,d,s)=>districts.indexOf(d)*2+(s==='lvr'?1:0);
+  series.forEach(({d,s,pts})=>{
+    const i=districts.indexOf(d);
+    const color=PALETTE[(i*2+(s==='lvr'?1:0))%PALETTE.length];
+    const name=state.src==='both'?`${d}·${SRC_LABEL[s]}`:d;
+    const isLvr=s==='lvr';
+    const dat=pts.filter(p=>p[mIdx]!=null).map(p=>[p[0],+p[mIdx].toFixed(2)]);
+    lines.push({name,type:'line',showSymbol:false,connectNulls:false,
+      lineStyle:{width:isLvr?2.2:2.6,color,type:isLvr?'dashed':'solid'},
+      itemStyle:{color},data:dat});
     if(band&&metric==='unit'){
-      bands.push({name:d+' p25–p75',type:'line',stack:'band'+i,symbol:'none',silent:true,
-        lineStyle:{opacity:0},itemStyle:{opacity:0},data:pts.map(p=>[p[0],+p[4].toFixed(2)])});
-      bands.push({name:d+' p25–p75',type:'line',stack:'band'+i,symbol:'none',silent:true,
-        lineStyle:{opacity:0},areaStyle:{color:PALETTE[i%PALETTE.length],opacity:.10},
-        data:pts.map(p=>[p[0],+p[5].toFixed(2)])});
+      const b1={name:name+' band',stack:'b'+combo(i,d,s),symbol:'none',silent:true,
+        lineStyle:{opacity:0},itemStyle:{opacity:0},
+        data:pts.filter(p=>p[4]!=null).map(p=>[p[0],+p[4].toFixed(2)])};
+      const b2={name:name+' band',stack:'b'+combo(i,d,s),symbol:'none',silent:true,
+        lineStyle:{opacity:0},
+        areaStyle:{color,opacity:.08},
+        data:pts.filter(p=>p[5]!=null).map(p=>[p[0],+p[5].toFixed(2)])};
+      bands.push(b1,b2);
     }
   });
   const yName=metric==='unit'?'中位單價（萬/坪）':'中位總價（萬）';
   const option={
     animation:false,
-    color:PALETTE,
     tooltip:{trigger:'axis',confine:true,
       formatter(ps){
         if(!ps.length)return'';
         const ts=ps[0].value[0];
-        const rows=districts.map(d=>{
-          const s=seriesFor(d);if(!s)return'';
-          const p=s[1].find(x=>x[0]===ts);
-          if(!p)return`<br><b>${d}</b>：該時段無資料`;
-          const n=p[1],med=p[metric==='unit'?3:2],p25=p[4],p75=p[5];
-          return`<br><b>${d}</b>　中位${metric==='unit'?'單價':'總價'} ${med}${metric==='unit'?' 萬/坪':' 萬'}（n=${n}）`+
-            (metric==='unit'?`<br><span style="color:#888">p25 ${p25} – p75 ${p75}</span>`:'');
-        }).join('');
-        return`${fmtTs(ts)}${rows}`;
+        let html=fmtTs(ts);
+        for(const {d,s} of series){
+          const p=seriesFor(d,s).find(x=>x[0]===ts);
+          const label=state.src==='both'?`${d}·${SRC_LABEL[s]}`:d;
+          if(!p){html+=`<br><b>${label}</b>：該時段無資料`;continue;}
+          const med=p[metric==='unit'?3:2];
+          html+=`<br><b>${label}</b>　中位${metric==='unit'?'單價':'總價'} ${med}${metric==='unit'?' 萬/坪':' 萬'}（n=${p[1]}）`;
+          if(metric==='unit')html+=`<br><span style="color:#888">　p25 ${p[4]} – p75 ${p[5]}</span>`;
+        }
+        return html;
       }},
     legend:{top:0,type:'scroll'},
     grid:{left:14,right:14,top:34,bottom:66,containLabel:true},
     xAxis:{type:'time',axisLabel:{formatter:v=>{const d=new Date(v+8*3600000);return `${d.getUTCMonth()+1}/${d.getUTCDate()}`;}}},
     yAxis:{type:'value',name:yName,nameTextStyle:{color:'#6b7482'},scale:true,
            splitLine:{lineStyle:{color:'#eef0f4'}}},
-    dataZoom:[{type:'inside',startValue:0},{type:'slider',height:22,bottom:8,
-      startValue:0,labelFormatter:(v)=>`${new Date(v+8*3600000).getUTCMonth()+1}/${new Date(v+8*3600000).getUTCDate()}`}],
+    dataZoom:[{type:'inside'},{type:'slider',height:22,bottom:8,
+      labelFormatter:v=>`${new Date(v+8*3600000).getUTCMonth()+1}/${new Date(v+8*3600000).getUTCDate()}`}],
     series:[...bands,...lines],
   };
   chart.setOption(option,true);
   applyZoom();
-  const total=series.reduce((a,[,pts])=>a+pts.length,0);
-  $('dataHint').innerHTML=`顯示 ${series.length} 條序列 · ${total} 個快照點 · 組合：${SIZE_LABEL[size]} / ${ROOM_LABEL(rooms)} / 統計期間含近 ${win} 個月`;
+  const total=series.reduce((a,s)=>a+s.pts.length,0);
+  const {size,rooms,win}=selVals();
+  const srcTxt=state.src==='both'?'刊登價 vs 成交價':SRC_LABEL[state.src];
+  $('dataHint').innerHTML=`${srcTxt} · ${districts.length} 區 · ${series.length} 條序列 · ${total} 個快照點 · ${SIZE_LABEL[size]} / ${ROOM_LABEL(rooms)} / 統計期間含近 ${win} 個月`;
 }
 
 init().catch(e=>showErr('初始化失敗: '+e.message));
