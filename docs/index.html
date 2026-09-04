@@ -100,8 +100,8 @@
         <option value="type">類型</option><option value="size">坪數</option>
         <option value="rooms">房數</option>
       </select></div>
-    <div class="ctl"><label>只看在售（刊登側）</label>
-      <div class="seg" id="activeSeg"><button data-v="1" class="on">是</button><button data-v="0">否</button></div></div>
+    <div class="ctl"><label>刊登側：含已售/下架（否）vs 只在售（是）</label>
+      <div class="seg" id="activeSeg"><button data-v="0" class="on">否（完整）</button><button data-v="1">是</button></div></div>
     <div class="ctl"><label>p25–p75 區間帶（≤4 條線時）</label>
       <div class="seg" id="bandSeg"><button data-b="1" class="on">顯示</button><button data-b="0">隱藏</button></div></div>
   </div>
@@ -129,8 +129,9 @@
   <div id="noline"></div>
   <div class="hint" id="dataHint"></div>
   <p class="note">與行情表共用同一組篩選與「分組」：每條線＝一個分組值 × 一個資料源，實線=刊登、虛線=成交。
-    刊登側屋齡/類型等中繼資料僅部分物件具備（台北約 17%），套用這些過濾時樣本會變少；
-    「只看在售=是」時刊登走勢的較舊月份樣本會流失（舊物件多已售出/下架），想看完整月份建議關掉。</p>
+    <b>兩線時間範圍不同是資料真實性，不是 bug</b>：①成交揭露至 2026-06（每季公布，近 1–2 個月只有刊登）；②刊登「首見日」自 2026-05 銀層重建才有，
+    刊登線最多 5–6 個月，所以兩線只有 2026/5–6 重疊——想比較長期的「刊登 vs 成交價差趨勢」，需要改用「滾動近 N 月」視角（每日快照、兩線全程重疊 5/26 起，但只支援行政區×坪數×房數粗維度）。
+    刊登側屋齡/類型等中繼資料僅部分物件具備（台北約 17%）。</p>
 </div>
 
 <div class="card">
@@ -151,7 +152,7 @@ const TYPE_ORDER=[1,2,3,4,5,0];
 const SRC_LABEL={asking:'刊登價',lvr:'成交價'};
 const PALETTE=['#b3402f','#3f6a74','#6b7f45','#c08a3e','#7c5f8f','#a26448','#8c5b3f','#5b6b8c'];
 const state={region:null,pools:{},districts:[],types:[1,2,3,4,5],sizes:[],rooms:[],
-             src:'both',metric:'unit',band:true,onlyActive:true,win:12,groupby:'all'};
+             src:'both',metric:'unit',band:true,onlyActive:false,win:12,groupby:'all'};
 let chart=null;
 function showErr(m){const b=$('errBox');b.textContent=m;b.style.display=m?'block':'none';console.error(m);}
 function maxOf(arr){let m=-Infinity;for(let i=0;i<arr.length;i++)if(arr[i]>m)m=arr[i];return m;}
