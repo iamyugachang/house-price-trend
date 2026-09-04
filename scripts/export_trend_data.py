@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Export housing data for the GH Pages trend/stats site.
 
-Datasets:
-1) market trend series: market_grid asking + lvr cells, keyed per region/source
+1) market trend series: market_grid asking + lvr cells keyed per region/source
    district|size|rooms|window -> [run_at_ms, n, med_total, med_unit, p25, p75]
-   files: trend-{region}.json (asking) + trend-lvr-{region}.json (成交)
-2) fine-grained "行情水準" pool (asking only): 雙北 residential listings seen
-   within last 13 months w/ Houseflow-grade metadata.
-   -> docs/data/listings-{region}.csv.gz (see column doc in README / meta)
+   trend-{rid}.json (asking) / trend-lvr-{rid}.json (成交)
+2) fine 行情水準 pools (15-col CSV.gz, per region):
+   asking pool = 雙北住宅 listings 近13個月刊登（現況 metadata）
+   lvr pool    = 雙北住宅實價登錄成交 近13個月（交易 metadata）
+   cols: src,district,type,elev,park,roof,age,m_acc,size,rooms,mrt,price,unit,last_d,act
+   type/elev/park/roof=-1 或空=未知；src: 0-3=刊登來源, 4=成交(lvr)
 """
 from __future__ import annotations
 
@@ -33,7 +34,6 @@ from tw_house_daily.db import dsn  # noqa: E402
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "docs" / "data"
 REGION_IDS = {"台北市": "taipei", "新北市": "newtaipei"}
-REGION_LIST = {"台北市": "listings-taipei.csv.gz", "新北市": "listings-newtaipei.csv.gz"}
 SRC_MAP = {"591": 0, "sinyi": 1, "yungching": 2, "hbhousing": 3}
 TYPE_MAP = {"unknown_residential": 0, "apartment": 1, "walkup": 2,
             "mid_rise": 3, "high_rise": 4, "townhouse": 5}
@@ -55,9 +55,9 @@ WHERE g.source_type IN ('asking', 'lvr')
 ORDER BY r.run_at, g.region, g.district
 """
 
-LIST_SQL = """
+ASKING_POOL_SQL = """
 SELECT source,
-       region, district, building_type_norm,
+       district, building_type_norm,
        has_elevator, has_parking, has_rooftop_addition,
        CAST(age_years AS float8) AS age_years,
        CASE WHEN main_ping IS NOT NULL AND accessory_ping IS NOT NULL
@@ -77,6 +77,26 @@ WHERE region = %s
   AND unit_wan_per_ping IS NOT NULL
 """
 
+LVR_POOL_SQL = """
+SELECT district, building_type_norm, has_elevator,
+       CAST(age_years AS float8) AS age_years,
+       CAST(main_balcony_ping AS float8) AS main_acc,
+       CAST(building_ping AS float8) AS size_ping,
+       rooms,
+       CAST(total_wan AS float8) AS price_wan,
+       CAST(unit_wan_per_ping AS float8) AS unit_wan,
+       EXTRACT(EPOCH FROM tx_date)::bigint / 86400 AS last_d,
+       CASE WHEN parking_kind IS NOT NULL OR parking_total_wan IS NOT NULL
+            THEN 1 ELSE 0 END AS has_park
+FROM lvr_tx
+WHERE region = %s
+  AND tx_date BETWEEN now() - interval '13 months' AND CURRENT_DATE
+  AND (usage IN ('住家用', '住商用', '住宅') OR usage IS NULL)
+  AND district IS NOT NULL
+  AND total_wan BETWEEN 300 AND 20000
+  AND unit_wan_per_ping > 0
+"""
+
 
 def fnum(v, nd=1):
     if v is None:
@@ -84,21 +104,45 @@ def fnum(v, nd=1):
     return f"{v:.{nd}f}"
 
 
+def _asking_row(r):
+    t = SRC_MAP.get(r["source"], 0)
+    b = TYPE_MAP.get(r["building_type_norm"], 0)
+    e = -1 if r["has_elevator"] is None else int(r["has_elevator"])
+    p = -1 if r["has_parking"] is None else int(r["has_parking"])
+    roof = -1 if r["has_rooftop_addition"] is None else int(r["has_rooftop_addition"])
+    return (f"{t},{r['district']},{b},{e},{p},{roof},{fnum(r['age_years'],1)},"
+            f"{fnum(r['main_acc'],1)},{fnum(r['size_ping'],1)},"
+            f"{'' if r['rooms'] is None else int(r['rooms'])},"
+            f"{'' if r['nearest_mrt_dist_m'] is None else int(r['nearest_mrt_dist_m'])},"
+            f"{fnum(r['price_wan'],0)},{fnum(r['unit_wan'],1)},"
+            f"{int(r['last_d'])},{r['act']}\n")
+
+
+def _lvr_row(r):
+    b = TYPE_MAP.get(r["building_type_norm"], 0)
+    e = -1 if r["has_elevator"] is None else int(r["has_elevator"])
+    return (f"4,{r['district']},{b},{e},{r['has_park']},-1,{fnum(r['age_years'],1)},"
+            f"{fnum(r['main_acc'],1)},{fnum(r['size_ping'],1)},"
+            f"{'' if r['rooms'] is None else int(r['rooms'])},"
+            f",{fnum(r['price_wan'],0)},{fnum(r['unit_wan'],1)},"
+            f"{int(r['last_d'])},0\n")
+
+
 def main() -> int:
     with psycopg.connect(dsn(), row_factory=dict_row) as conn:
-        # --- part 1: trend series per (region, source) ---
+        # ── part 1: trend series per (region, source) ──
         rows = conn.execute(TREND_SQL).fetchall()
         series: dict = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
         for r in rows:
             if r["region"] not in REGION_IDS:
-                continue  # site currently serves 雙北 only
+                continue
             ts = int(r["run_at"].timestamp() * 1000)
             key = f"{r['district']}|{r['size_bucket']}|{r['rooms']}|{r['window_months']}"
             series[r["region"]][r["src"]][key].append(
                 [ts, r["n_pool"], r["median_total_wan"], r["median_unit_wan_per_ping"],
                  r["p25_unit"], r["p75_unit"]])
 
-        regions_out = []
+        trend_regions = []
         for region, rid in REGION_IDS.items():
             files = {}
             for src in ("asking", "lvr"):
@@ -108,50 +152,54 @@ def main() -> int:
                     json.dumps(payload, separators=(",", ":")), encoding="utf-8")
                 files[src] = fname
                 print(f"{fname}: {len(payload)} series")
-            regions_out.append({"id": rid, "name": region, "files": files})
+            trend_regions.append({"id": rid, "name": region, "files": files})
 
-        # --- part 2: fine listings pool (asking) per region ---
-        fine_meta = {}
-        for region, fname in REGION_LIST.items():
-            rows = conn.execute(LIST_SQL, [region]).fetchall()
+        # ── part 2: fine pools (asking + lvr) per region ──
+        def emit(fname: str, rows, row_fn) -> tuple[int, int]:
             buf = io.StringIO()
+            n = 0
+            max_d = 0
             for r in rows:
-                t = SRC_MAP.get(r["source"], 0)
-                b = TYPE_MAP.get(r["building_type_norm"], 0)
-                e = -1 if r["has_elevator"] is None else int(r["has_elevator"])
-                p = -1 if r["has_parking"] is None else int(r["has_parking"])
-                roof = -1 if r["has_rooftop_addition"] is None else int(r["has_rooftop_addition"])
-                buf.write(
-                    f"{t},{r['district']},{b},{e},{p},{roof},{fnum(r['age_years'],1)},"
-                    f"{fnum(r['main_acc'],1)},{fnum(r['size_ping'],1)},"
-                    f"{'' if r['rooms'] is None else int(r['rooms'])},"
-                    f"{'' if r['nearest_mrt_dist_m'] is None else int(r['nearest_mrt_dist_m'])},"
-                    f"{fnum(r['price_wan'],0)},{fnum(r['unit_wan'],1)},"
-                    f"{int(r['last_d'])},{r['act']}\n")
-            raw = buf.getvalue().encode("utf-8")
+                line = row_fn(r)
+                if not line:
+                    continue
+                buf.write(line)
+                n += 1
+                max_d = max(max_d, int(r["last_d"]))
             path = OUT_DIR / fname
             with gzip.open(path, "wb", compresslevel=6) as fz:
-                fz.write(raw)
-            fine_meta[REGION_IDS[region]] = {
-                "file": fname, "rows": len(rows),
-                "max_last_d": max(int(r["last_d"]) for r in rows),
-            }
-            print(f"{fname}: {len(rows)} rows, {path.stat().st_size/1e6:.1f} MB gz")
+                fz.write(buf.getvalue().encode("utf-8"))
+            print(f"{fname}: {n} rows, {path.stat().st_size/1e6:.1f} MB gz")
+            return n, max_d
+
+        fine_regions = {}
+        for region, rid in REGION_IDS.items():
+            entry = {}
+            a_rows = conn.execute(ASKING_POOL_SQL, [region]).fetchall()
+            n_a, d_a = emit(f"listings-{rid}.csv.gz", a_rows, _asking_row)
+            entry["asking"] = {"file": f"listings-{rid}.csv.gz", "rows": n_a,
+                               "max_last_d": d_a}
+            l_rows = conn.execute(LVR_POOL_SQL, [region]).fetchall()
+            n_l, d_l = emit(f"listings-lvr-{rid}.csv.gz", l_rows, _lvr_row)
+            entry["lvr"] = {"file": f"listings-lvr-{rid}.csv.gz", "rows": n_l,
+                            "max_last_d": d_l}
+            fine_regions[rid] = entry
 
     meta = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "trend": {
             "source": "asking=平台刊登價 market_grid；lvr=內政部實價登錄成交(季公布,揭露至 2026-06)。"
                       "lvr 近1/3月窗通常無資料屬正常滯後。",
-            "regions": regions_out,
+            "regions": trend_regions,
         },
         "fine": {
-            "source": "asking 現況刊登池；欄位: src,district,type,elev,park,roof,age,m_acc,size,rooms,"
-                      "mrt,price,unit,last_d,act（type/elev/park/roof=-1 或空=未知）",
-            "src_names": ["591", "sinyi", "yungching", "hbhousing"],
+            "source": "asking pool=近13個月刊登(現況 metadata)；lvr pool=近13個月成交(交易 metadata)。"
+                      "欄位: src,district,type,elev,park,roof,age,m_acc,size,rooms,mrt,price,unit,last_d,act；"
+                      "type/elev/park/roof=-1 或空=未知；src 4=成交",
+            "src_names": ["591", "sinyi", "yungching", "hbhousing", "lvr成交"],
             "type_names": ["未分類/unknown", "公寓", "華廈", "大樓(11-19F)",
                            "電梯大樓(20F+)", "透天"],
-            "regions": fine_meta,
+            "regions": fine_regions,
         },
     }
     (OUT_DIR / "meta.json").write_text(
