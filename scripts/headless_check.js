@@ -6,7 +6,7 @@
 const fs = require('fs');
 const os = require('os');
 let pw;
-try { pw = require('playwright-core'); } catch (e) { pw = require('/tmp/pw/node_modules/playwright-core'); }
+try { pw = require('playwright-core'); } catch (e) { pw = require('/home/yugachang/.cache/pw/node_modules/playwright-core'); }
 const { chromium } = pw;
 
 (async () => {
